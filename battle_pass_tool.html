@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Battle Pass 數值平衡模擬器</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: auto;
+            background: #fff;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        .input-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 25px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        .field {
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        input, textarea {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        textarea {
+            resize: vertical;
+            height: 60px;
+        }
+        button {
+            grid-column: span 2;
+            padding: 12px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background-color: #2980b9;
+        }
+        .summary {
+            display: flex;
+            justify-content: space-around;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: #eef7fd;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        .summary div span {
+            color: #e67e22;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        th, td {
+            text-align: right;
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background-color: #34495e;
+            color: white;
+            text-align: center;
+        }
+        tr:nth-child(even) {
+            background-color: #fcfcfc;
+        }
+        tr:hover {
+            background-color: #f1f4f6;
+        }
+        .error-msg {
+            color: #e74c3c;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            font-size: 12px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Battle Pass 數值平衡模擬器</h1>
+    
+    <div class="input-group">
+        <div class="field">
+            <label>總目標押量 (Total Bet)</label>
+            <input type="number" id="totalGoal" value="100000">
+        </div>
+        <div class="field">
+            <label>免費獎勵佔比 (% of Total Bet)</label>
+            <input type="number" id="freePercent" step="0.1" value="1">
+        </div>
+        <div class="field">
+            <label>付費獎勵總價值 (Total Paid Value)</label>
+            <input type="number" id="paidValue" value="2711">
+        </div>
+        <div class="field">
+            <label>各節點難度比例 (用逗號隔開，需加總為100)</label>
+            <textarea id="ratios">5, 5, 10, 10, 15, 20, 35</textarea>
+            <div id="ratioError" class="error-msg">警告：目前比例加總不等於 100%！</div>
+        </div>
+        <button onclick="calculateBP()">開始計算並生成清單</button>
+    </div>
+
+    <div id="resultsArea" style="display:none;">
+        <div class="summary">
+            <div>免費線總價值: <span id="sumFree">0</span></div>
+            <div>付費線總價值: <span id="sumPaid">0</span></div>
+            <div>節點總數: <span id="sumTiers">0</span></div>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>節點</th>
+                    <th>比例</th>
+                    <th>單層目標</th>
+                    <th>累積進度(押量)</th>
+                    <th>免費獎勵價值</th>
+                    <th>付費獎勵價值</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody">
+                <!-- JS 會填入這裡 -->
+            </tbody>
+        </table>
+    </div>
+
+    <div class="footer">
+        此工具專為營運規劃設計，計算邏輯：免費獎勵 = 總目標 × 免費% × 節點比例
+    </div>
+</div>
+
+<script>
+    function calculateBP() {
+        const totalGoal = parseFloat(document.getElementById('totalGoal').value);
+        const freePercent = parseFloat(document.getElementById('freePercent').value) / 100;
+        const paidValue = parseFloat(document.getElementById('paidValue').value);
+        const ratiosText = document.getElementById('ratios').value;
+        
+        // 解析比例
+        const ratios = ratiosText.split(',').map(r => parseFloat(r.trim())).filter(r => !isNaN(r));
+        const ratioSum = ratios.reduce((a, b) => a + b, 0);
+        
+        // 檢查加總是否為 100
+        const errorMsg = document.getElementById('ratioError');
+        if (Math.abs(ratioSum - 100) > 0.01) {
+            errorMsg.style.display = 'block';
+            errorMsg.innerText = `警告：目前比例加總為 ${ratioSum.toFixed(2)}%，建議調整為 100%！`;
+        } else {
+            errorMsg.style.display = 'none';
+        }
+
+        const freeTotalValue = totalGoal * freePercent;
+        
+        const tableBody = document.getElementById('tableBody');
+        tableBody.innerHTML = '';
+        
+        let cumulativeBet = 0;
+        
+        ratios.forEach((ratio, index) => {
+            const ratioDec = ratio / 100;
+            const tierGoal = totalGoal * ratioDec;
+            cumulativeBet += tierGoal;
+            const freeReward = freeTotalValue * ratioDec;
+            const paidReward = paidValue * ratioDec;
+            
+            const row = `<tr>
+                <td style="text-align:center;">${index + 1}</td>
+                <td>${ratio}%</td>
+                <td>${Math.round(tierGoal).toLocaleString()}</td>
+                <td>${Math.round(cumulativeBet).toLocaleString()}</td>
+                <td>${freeReward.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                <td>${paidReward.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+            </tr>`;
+            tableBody.innerHTML += row;
+        });
+
+        // 更新摘要
+        document.getElementById('sumFree').innerText = freeTotalValue.toLocaleString();
+        document.getElementById('sumPaid').innerText = paidValue.toLocaleString();
+        document.getElementById('sumTiers').innerText = ratios.length;
+        
+        // 顯示結果區域
+        document.getElementById('resultsArea').style.display = 'block';
+    }
+
+    // 初始化跑一次
+    window.onload = calculateBP;
+</script>
+
+</body>
+</html>
