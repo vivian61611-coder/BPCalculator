@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Battle Pass 數值平衡模擬器 Pro</title>
+    <title>Battle Pass 數值平衡模擬器 Pro (含邏輯檢查)</title>
     <style>
         body {
             font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
@@ -115,21 +115,38 @@
             text-align: right;
         }
         .tier-col { text-align: center; font-weight: bold; }
-        .ratio-col { color: #d93025; font-weight: 500; }
+        .ratio-col { color: #555; font-weight: 500; }
+        
+        /* 警告 Banner */
         .error-banner {
             background-color: #fce8e6;
             color: #d93025;
-            padding: 10px;
-            border-radius: 4px;
+            padding: 15px;
+            border-radius: 6px;
             margin-bottom: 15px;
             display: none;
             font-weight: bold;
-            text-align: center;
+            border-left: 5px solid #d93025;
         }
+        .warning-banner {
+            background-color: #fff4e5;
+            color: #663c00;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            display: none;
+            font-weight: bold;
+            border-left: 5px solid #ff9800;
+        }
+
         .suggest-hint {
             font-size: 12px;
             color: #70757a;
             margin-top: 4px;
+        }
+        .danger-text {
+            color: #d93025 !important;
+            font-weight: bold;
         }
     </style>
 </head>
@@ -138,7 +155,9 @@
 <div class="container">
     <h1>Battle Pass 數值平衡模擬器 Pro</h1>
     
+    <!-- 錯誤與防呆警告區 -->
     <div id="errorBanner" class="error-banner"></div>
+    <div id="logicWarning" class="warning-banner"></div>
 
     <div class="config-section">
         <div class="field">
@@ -200,7 +219,7 @@
                     <th style="width: 80px;">節點</th>
                     <th>難度比例</th>
                     <th>單層目標</th>
-                    <th>累積押量(進度)</th>
+                    <th>累積押量</th>
                     <th>免費獎勵價值</th>
                     <th>付費獎勵價值</th>
                 </tr>
@@ -252,7 +271,6 @@
         const currentSum = ratios.reduce((a, b) => a + b, 0);
         const diff = 100 - currentSum;
         ratios[ratios.length - 1] = parseFloat((ratios[ratios.length - 1] + diff).toFixed(2));
-
         document.getElementById('ratios').value = ratios.join(', ');
     }
 
@@ -265,13 +283,16 @@
         const ratios = ratiosText.split(',').map(r => parseFloat(r.trim())).filter(r => !isNaN(r));
         const ratioSum = ratios.reduce((a, b) => a + b, 0);
         
+        // 重設警告
         const errorBanner = document.getElementById('errorBanner');
+        const logicWarning = document.getElementById('logicWarning');
+        errorBanner.style.display = 'none';
+        logicWarning.style.display = 'none';
+
         if (Math.abs(ratioSum - 100) > 0.1) {
-            errorBanner.innerText = `錯誤：比例加總為 ${ratioSum.toFixed(2)}% (不等於 100%)。`;
+            errorBanner.innerText = `[格式錯誤]：比例加總為 ${ratioSum.toFixed(2)}% (不等於 100%)，請修正後再計算。`;
             errorBanner.style.display = 'block';
             return;
-        } else {
-            errorBanner.style.display = 'none';
         }
 
         const freeTotalValue = totalGoal * freePercent;
@@ -279,6 +300,8 @@
         tableBody.innerHTML = '';
         
         let cumulativeBet = 0;
+        let problemTiers = [];
+
         ratios.forEach((ratio, index) => {
             const ratioDec = ratio / 100;
             const tierGoal = totalGoal * ratioDec;
@@ -286,15 +309,25 @@
             const freeReward = freeTotalValue * ratioDec;
             const paidReward = paidValue * ratioDec;
             
+            // 防呆檢查：付費是否小於免費
+            let isProblem = (paidReward < freeReward);
+            if (isProblem) problemTiers.push(index + 1);
+
             tableBody.innerHTML += `<tr>
                 <td class="tier-col">${index + 1}</td>
                 <td class="ratio-col">${ratio}%</td>
                 <td>${Math.round(tierGoal).toLocaleString()}</td>
                 <td>${Math.round(cumulativeBet).toLocaleString()}</td>
-                <td>${freeReward.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
-                <td>${paidReward.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                <td class="${isProblem ? 'danger-text' : ''}">${freeReward.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                <td class="${isProblem ? 'danger-text' : ''}">${paidReward.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} ${isProblem ? '⚠️' : ''}</td>
             </tr>`;
         });
+
+        // 顯示防呆建議
+        if (problemTiers.length > 0) {
+            logicWarning.innerHTML = `⚠️ [數值建議]：偵測到第 ${problemTiers.join(', ')} 節點的「付費獎勵價值」低於「免費獎勵價值」。<br>這可能會降低玩家付費意願，建議增加「付費獎勵總價值」或降低「免費獎勵佔比」。`;
+            logicWarning.style.display = 'block';
+        }
 
         document.getElementById('sumFree').innerText = freeTotalValue.toLocaleString();
         document.getElementById('sumPaid').innerText = paidValue.toLocaleString();
